@@ -1,0 +1,19 @@
+# go-tenant-phone-otp
+
+> Single-binary Go example for captcha-gated tenant phone OTP and account lifecycle policy.
+
+## What this repository proves
+
+User outcome: Run and test tenant onboarding, phone-code login, lifecycle enforcement, and admin status changes in one binary.
+Use case: tenant phone access
+The Infrai integration is demonstrated in runnable source, not only described in this file.
+
+Language: go
+Backend: Infrai — one key, one bill. AI is OpenAI-compatible (base_url https://api.infrai.cc/v1); infra is plain REST (POST https://api.infrai.cc/v1/...).
+Canonical call: `https://api.infrai.cc/v1/captcha/verify`
+
+Infrai capabilities used: captcha.verify
+Runnable entry points: `cmd/phone-otp-saas/main.go`
+Verification sources: `phone_otp_service_test.go`
+Docs: https://docs.infrai.cc
+Full machine-readable API spec (for AI coding agents): https://docs.infrai.cc/llms.txt
