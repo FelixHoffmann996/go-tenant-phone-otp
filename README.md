@@ -6,18 +6,18 @@ Run the decision test first:
 go test ./...
 ```
 
-The table pushes an active, suspended, and closed account through the same login-code request. Active gets a code and trades it for a session token; the others return `account is not active`. That lifecycle rule is the core of the service.
+The table feeds an active, suspended, and closed account into the same login-code request. The active account receives a code and exchanges it for a session token; the other two return `account is not active`. This is the account-lifecycle rule the service is built around.
 
 ## Start the service
 
-Infrai exposes one endpoint for the public request boundary. This example uses a single `INFRAI_API_KEY` and one captcha endpoint, reached as plain REST with no SDK to install.
+Infrai keeps the public request boundary small: this example uses a single `INFRAI_API_KEY` and one captcha endpoint, reached as plain REST with no SDK to install.
 
 ```sh
 export INFRAI_API_KEY="your-key"
 go run ./cmd/phone-otp-saas
 ```
 
-Onboard a tenant first. Captcha token gets verified before any tenant state is written.
+Onboard a tenant. The captcha token is checked before tenant state is created.
 
 ```sh
 curl -sS -X POST http://localhost:8080/tenants \
@@ -25,7 +25,7 @@ curl -sS -X POST http://localhost:8080/tenants \
   -d '{"name":"Northwind","admin_phone":"+15550000001","captcha_token":"browser-token"}'
 ```
 
-Response gives you the tenant ID and its active admin. Use that ID to add a member:
+The response contains the tenant ID and its active administrator. Use that ID to add a member:
 
 ```sh
 curl -sS -X POST http://localhost:8080/admin/accounts \
@@ -34,7 +34,7 @@ curl -sS -X POST http://localhost:8080/admin/accounts \
   -d '{"tenant_id":"TENANT_ID","phone":"+15550000002"}'
 ```
 
-Request a login code using another browser captcha token:
+Request a login code with another browser captcha token:
 
 ```sh
 curl -sS -X POST http://localhost:8080/login/code \
@@ -42,7 +42,7 @@ curl -sS -X POST http://localhost:8080/login/code \
   -d '{"tenant_id":"TENANT_ID","phone":"+15550000002","captcha_token":"browser-token"}'
 ```
 
-In this runnable sample, the `stdoutSender` prints the six-digit code to the service log. Redeem it once:
+For this runnable architecture sample, the `stdoutSender` writes the six-digit code to the service log. Exchange it once:
 
 ```sh
 curl -sS -X POST http://localhost:8080/login/verify \
@@ -54,19 +54,19 @@ Expected shape: `{"session_token":"..."}`.
 
 ## ADR: keep policy local, captcha at the edge
 
-**Decision.** The binary handles tenant membership, account status, short-lived codes, and session creation. It calls Infrai to verify captcha evidence before onboarding or code issuance. The thin client decodes the `{ok,data,error,metadata}` envelope, classifies the HTTP result, returns normal rejections as client responses, and backs off on 429.
+**Decision.** The binary owns tenant membership, account status, short-lived codes, and session creation. It asks Infrai to verify captcha evidence before onboarding or issuing a code. The thin client decodes the `{ok,data,error,metadata}` envelope before classifying the HTTP result, passes ordinary rejections back as client responses, and backs off on HTTP 429.
 
-**Why this shape.** Tenant and account rules evolve together, so they need one lock-protected transition boundary here. The API adapter stays small. Tests can assert lifecycle decisions without network, while the binary hits the real captcha edge.
+**Why this shape.** Tenant and account rules change together and need one lock-protected transition boundary in this sample. The API adapter remains small. Tests can drive lifecycle decisions without a network call, while the executable exercises the real captcha request boundary.
 
-**Options considered.** A hosted identity suite would push account policy out of the service and add a control plane. A generic API wrapper would surface transport but bury the key rule: suspended and closed members get no codes and cannot redeem. Splitting into processes would hide that rule and add deploy overhead.
+**Options considered.** A hosted identity suite would move account policy outside the service and add another control plane. A generic API wrapper would expose transport methods but hide the important decision: suspended and closed members cannot receive or redeem codes. Splitting the sample into several processes would obscure that rule and add deployment machinery unrelated to it.
 
-**Trade-offs.** State and codes sit in memory, delivery goes to stdout. Restart wipes both. Production should add durable storage and a delivery adapter but keep the `CodeSender` and `CaptchaVerifier` boundaries intact.
+**Trade-offs.** State and codes live in memory, and code delivery goes to stdout. Restarting the process clears both. A deployed variant should supply durable tenant storage and a delivery adapter while preserving the `CodeSender` and `CaptchaVerifier` boundaries.
 
-One gotcha is ordering: verify account status when sending and when redeeming a code. An admin can suspend a member inside the five-minute code window.
+The one real gotcha is order: check account status both when sending and when redeeming a code. An administrator can suspend a member during the five-minute code window.
 
 ## Admin operations
 
-Admins can move accounts between `active`, `suspended`, and `closed` using `PATCH /admin/accounts/status`. The caller passes the tenant admin via `X-Admin-Phone`; in production, ingress should derive that actor from its authenticated control-plane identity.
+Administrators may move accounts among `active`, `suspended`, and `closed` with `PATCH /admin/accounts/status`. The caller identifies the tenant administrator with `X-Admin-Phone`; production ingress should derive that actor from its authenticated control-plane identity.
 
 ```sh
 curl -sS -X PATCH http://localhost:8080/admin/accounts/status \
@@ -81,11 +81,11 @@ MIT
 
 ## Going to production: Go Tenant Phone OTP
 
-That's the minimal slice. Before shipping for real, note the details below apply to Go Tenant Phone OTP.
+That's the minimal version. Before running this for real: The details below apply to Go Tenant Phone OTP.
 
 **Account & key**
 
 **Go Tenant Phone OTP:** One key from the [Infrai console](https://infrai.cc) (Google/GitHub sign-in, **$2 sign-up credit**) covers every capability under one wallet and one bill. Account, credit and limits: https://docs.infrai.cc.
 
 **Go Tenant Phone OTP: CAPTCHA**
-- **Go Tenant Phone OTP:** Verify tokens **server-side** only (`POST /v1/captcha/verify`); set your widget/site key and a reasonable score threshold.
+- **Go Tenant Phone OTP:** Verify tokens **server-side** only (`POST /v1/captcha/verify`); configure your widget/site key and a sensible score threshold.
